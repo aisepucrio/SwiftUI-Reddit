@@ -3,9 +3,13 @@ import csv
 import re
 from datetime import datetime
 from typing import List, Dict, Any, Set
+from pathlib import Path
 
 import praw
 from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+DATA_RAW_REDDIT_DIR = BASE_DIR / "data" / "raw" / "reddit"
 
 CORE_ARCH_KEYWORDS = ["MVVM", "MVP", "VIPER", "TCA", "MV", "MVVM-C"]
 
@@ -42,6 +46,7 @@ MIXED_SUBREDDITS = ["iOSProgramming", "swift"]
 
 
 def build_patterns(keywords: List[str]) -> Dict[str, re.Pattern]:
+    """Compila palavras-chave em padrões regex case-insensitive com borda de palavra."""
     return {
         kw: re.compile(rf"\b{re.escape(kw)}\b", re.IGNORECASE)
         for kw in keywords
@@ -53,7 +58,8 @@ SWIFTUI_PATTERNS = build_patterns(SWIFTUI_KEYWORDS)
 
 
 def create_reddit_client() -> praw.Reddit:
-    load_dotenv()
+    """Cria um cliente PRAW read-only usando credenciais do arquivo .env."""
+    load_dotenv(BASE_DIR / ".env")
 
     client_id = os.getenv("REDDIT_CLIENT_ID")
     client_secret = os.getenv("REDDIT_CLIENT_SECRET")
@@ -75,6 +81,7 @@ def create_reddit_client() -> praw.Reddit:
     return reddit
 
 def find_keywords(text: str, patterns: Dict[str, re.Pattern]) -> List[str]:
+    """Retorna palavras-chave cujos padrões aparecem no texto informado."""
     if not text:
         return []
     found = []
@@ -89,10 +96,7 @@ def collect_posts_for_subreddit(
     time_filter: str = "all",
     limit_per_query: int = 300,
 ) -> Dict[str, Dict[str, Any]]:
-    """
-    Faz várias buscas (SEARCH_QUERIES) em um subreddit
-    e retorna um dict {id: dados_do_post}, já filtrando por SwiftUI+arquitetura.
-    """
+    """Busca posts de um subreddit e filtra conteúdos sobre SwiftUI e arquitetura."""
     subreddit = reddit.subreddit(subreddit_name)
     collected: Dict[str, Dict[str, Any]] = {}
 
@@ -144,6 +148,7 @@ def collect_posts_for_subreddit(
 
 
 def collect_all_posts(reddit: praw.Reddit) -> List[Dict[str, Any]]:
+    """Coleta posts únicos nos subreddits configurados para a pesquisa."""
     posts_by_id: Dict[str, Dict[str, Any]] = {}
 
     for sub in SWIFTUI_ONLY_SUBREDDITS:
@@ -162,6 +167,7 @@ def collect_comments_for_posts(
     posts: List[Dict[str, Any]],
     max_comments_per_post: int = 400,
 ) -> List[Dict[str, Any]]:
+    """Coleta comentários dos posts filtrando menções a SwiftUI e arquitetura."""
     all_comments: List[Dict[str, Any]] = []
 
     for post in posts:
@@ -217,6 +223,7 @@ def collect_comments_for_posts(
     return all_comments
 
 def save_dicts_to_csv(rows: List[Dict[str, Any]], filename: str) -> None:
+    """Salva uma lista de dicionários em CSV usando as chaves da primeira linha."""
     if not rows:
         print(f"Nenhuma linha para salvar em {filename}.")
         return
@@ -229,17 +236,20 @@ def save_dicts_to_csv(rows: List[Dict[str, Any]], filename: str) -> None:
     print(f"Arquivo salvo: {filename} (linhas: {len(rows)})")
 
 def main():
+    """Executa a coleta de posts e comentários do Reddit."""
+    DATA_RAW_REDDIT_DIR.mkdir(parents=True, exist_ok=True)
+
     reddit = create_reddit_client()
 
     posts = collect_all_posts(reddit)
-    save_dicts_to_csv(posts, "reddit_swiftui_arch_posts_big.csv")
+    save_dicts_to_csv(posts, str(DATA_RAW_REDDIT_DIR / "reddit_swiftui_arch_posts_big.csv"))
 
     comments = collect_comments_for_posts(
         reddit,
         posts,
         max_comments_per_post=500,
     )
-    save_dicts_to_csv(comments, "reddit_swiftui_arch_comments_big.csv")
+    save_dicts_to_csv(comments, str(DATA_RAW_REDDIT_DIR / "reddit_swiftui_arch_comments_big.csv"))
 
 
 if __name__ == "__main__":
